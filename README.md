@@ -1,78 +1,42 @@
 # tcg-scraper-python
 
-Scripts para actualizar colecciones de cartas de Magic: The Gathering y Pokémon TCG a partir de listas de mazos.
+Scrapers independientes para mantener colecciones de cartas de Magic: The Gathering y Pokémon TCG a partir de listas de mazos.
 
-## Descripción
+## Estructura
 
-El proyecto contiene dos apps independientes:
+```text
+scraper-tcg-python/
+├── magic.app/      # Scraper de Magic
+├── pokemon.app/    # Scraper de Pokémon
+├── tests/          # Pruebas unitarias
+├── requirements.txt
+├── README.md
+└── AGENTS.md       # Contexto para agentes LLM
+```
 
-- **`magic.app/`**: scrapea mazos de Magic desde `mtgdecks.net` usando las URLs de `decks/decks.yaml`, clasifica cada carta por **legalidad Pauper** y **tipo** (criatura, instantáneo/conjuro, planeswalker, artefacto, encantamiento, tierra) consultando la API de Scryfall y genera las salidas en `exports/`. Tierras básicas se ignoran.
-- **`pokemon.app/`**: scrapea listas de Pokémon desde `decks/decks.yaml`, separa Pokémon de Trainers y subclasifica los Trainers en **Supporter / Item / Tool / Stadium** consultando `limitlesstcg.com`. Energías básicas se ignoran.
+Cada app tiene su propia configuración, caché, base de datos y directorio de salida. Los archivos locales están ignorados por Git. Las plantillas versionadas terminan en `.example`.
 
-Los archivos locales de datos, configuración, caché y salida están ignorados por Git. Las plantillas versionadas terminan en `.example`; para usarlas, copia cada plantilla y elimina ese sufijo.
+## Instalación
 
-## Apps disponibles
-
-| Carpeta | Juego | Fuente |
-|---|---|---|
-| `magic.app/` | Magic: The Gathering | `mtgdecks.net` + Scryfall |
-| `pokemon.app/` | Pokemon TCG | `play.limitlesstcg.com` + `limitlesstcg.com` |
-
-## Requisitos
+Requiere Python 3 y las dependencias de `requirements.txt`.
 
 ```bash
-# Crear entorno virtual
 python -m venv .venv
 
-# Activar entorno virtual
 # Linux/macOS
 source .venv/bin/activate
-# Windows
-.venv\Scripts\activate
 
-# Instalar dependencias
+# Windows PowerShell
+.venv\Scripts\Activate.ps1
+
 pip install -r requirements.txt
 ```
 
-Dependencias principales: `requests`, `beautifulsoup4`, `PyYAML`.
+## Magic
 
-## Uso
+La app `magic.app/` descarga mazos desde páginas individuales de `mtgdecks.net`. La lista se extrae del elemento `#arena_deck`, incluyendo el sideboard, y las tierras básicas se ignoran.
 
-```bash
-# Magic
-(cd magic.app && python scraper.py)
-
-# Pokémon
-(cd pokemon.app && python scraper.py)
-```
-
-## Salida
-
-### `magic.app`
-
-Lee las URLs de `decks/decks.yaml`, extrae la lista desde `mtgdecks.net` y clasifica las cartas por legalidad Pauper y tipo consultando Scryfall.
-
-La salida se regenera directamente en `exports/`:
-
-```text
-magic.app/
-├── decks/
-│   └── decks.yaml.example
-├── cards_db.json.example
-└── exports/
-    ├── collection_pauper_<tipo>.txt
-    ├── collection_non_pauper_<tipo>.txt
-    └── ...
-```
-
-- `collection_pauper_<tipo>.txt` contiene explícitamente las cartas Pauper agrupadas por tipo.
-- `collection_non_pauper_<tipo>.txt` contiene explícitamente las cartas no Pauper agrupadas por tipo. En ambos casos, si una carta aparece en varios mazos, se conserva la cantidad máxima.
-- No se generan archivos individuales por mazo ni archivos auxiliares de revisión.
-- Todos los archivos `.txt` anteriores de `exports/` se eliminan y regeneran en cada ejecución.
-
-La ejecución muestra trazas detalladas con prefijos `[Magic]`, `[Scryfall]`, `[Pokemon]` y `[Limitless]`, incluyendo el uso de caché, las cartas procesadas, su clasificación y los archivos generados.
-
-**Formato de `decks/decks.yaml`:**
+Configura las URLs en `magic.app/decks/decks.yaml`, partiendo de `magic.app/decks/decks.yaml.example`:
 
 ```yaml
 decks:
@@ -84,89 +48,85 @@ decks:
   pioneer: []
 ```
 
-Cada formato contiene una lista de URLs de mazos de `mtgdecks.net`. El orden de formatos y mazos se conserva durante el procesamiento.
+Cada formato contiene una lista de URLs. El orden del YAML se conserva. Scryfall determina la legalidad Pauper y el tipo de carta. La prioridad de clasificación es `Creature`, `Land`, `Planeswalker`, `Instant/Sorcery`, `Artifact`, `Enchantment`.
 
-Si una URL no responde correctamente o no contiene una lista reconocible, ese mazo se procesa vacío y se informa del error. Los archivos de `exports/` se limpian después de descargar y preparar todos los mazos.
+Ejecuta desde `magic.app/`:
 
-Las tierras básicas se ignoran. Las cartas del sideboard se incluyen.
-
-La prioridad de tipos cuando una carta tiene varios es: Creature > Land > Planeswalker > Instant/Sorcery > Artifact > Enchantment.
-
-El script procesa los mazos en el orden del YAML y agrega cartas Pauper y no Pauper tomando la cantidad máxima vista entre mazos.
-
-La caché `decks_cache.json` conserva las listas descargadas por URL. Usa `python scraper.py --refresh` para volver a descargar los mazos.
-
-### `pokemon.app`
-
-Scrapea listas de Limitless TCG (`play.limitlesstcg.com/.../decklist`), separa las cartas en Pokémon y Trainers, y subclasifica los Trainers en **Supporter / Item / Tool / Stadium** consultando `limitlesstcg.com`. Las energías básicas se ignoran.
-
-**Estructura y archivos actualizados:**
-
-```text
-pokemon.app/
-├── decks/
-│   └── decks.yaml.example
-├── cards_db.json.example
-├── decks_cache.json.example
-└── export/
-    ├── collection_standard_pokemon.txt
-    ├── collection_standard_items.txt
-    ├── collection_standard_supporters.txt
-    ├── collection_standard_tools.txt
-    ├── collection_standard_stadiums.txt
-    ├── collection_standard_energies.txt
-    ├── collection_glc_pokemon.txt
-    ├── collection_glc_items.txt
-    ├── collection_glc_supporters.txt
-    ├── collection_glc_tools.txt
-    ├── collection_glc_stadiums.txt
-    ├── collection_glc_energies.txt
-    ├── unknown_standard.txt
-    └── unknown_glc.txt
+```bash
+python scraper.py
+python scraper.py --refresh
 ```
 
-- Cada archivo `collection_<formato>_<tipo>.txt` contiene todas las cartas de ese formato agregadas desde sus listas.
-- En `standard` se conserva la cantidad máxima de cada carta.
-- En `glc` todas las cartas se escriben con cantidad `1`.
-- Las cartas Pokémon conservan su impresión, por ejemplo `4 Pikachu (SVI-062)`.
-- `unknown_<formato>.txt` contiene Trainers cuyo subtipo no se pudo determinar.
-- `decks_cache.json` conserva las listas descargadas por URL para evitar consultas repetidas.
+`--refresh` ignora `decks_cache.json` y vuelve a descargar los mazos. La base de datos `cards_db.json` se conserva para evitar consultas repetidas a Scryfall.
 
-El script regenera directamente los archivos `.txt` de `export/` en cada ejecución.
+La salida se regenera en `magic.app/exports/` y contiene siempre estos archivos para cada categoría (`creatures`, `lands`, `planeswalkers`, `spells`, `artifacts`, `enchantments`):
 
-**Formato de `decks/decks.yaml`:**
+```text
+collection_pauper_<category>.txt
+collection_non_pauper_<category>.txt
+```
+
+Cuando una carta aparece en varios mazos, se conserva la cantidad máxima. Las cartas desconocidas se informan en consola, pero no se escriben en un archivo adicional.
+
+## Pokémon
+
+La app `pokemon.app/` descarga decklists de `play.limitlesstcg.com`, separa las secciones Pokémon, Trainer y Energy, e identifica el subtipo de los Trainers consultando `limitlesstcg.com`. Las energías básicas se ignoran; otras energías se conservan.
+
+Configura las URLs en `pokemon.app/decks/decks.yaml`, partiendo de `pokemon.app/decks/decks.yaml.example`:
 
 ```yaml
 decks:
   standard:
-    - https://play.limitlesstcg.com/tournament/.../player/.../decklist
+    - https://play.limitlesstcg.com/tournament/example/player/example/decklist
   glc:
-    - https://play.limitlesstcg.com/tournament/.../player/.../decklist
+    - https://play.limitlesstcg.com/tournament/example/player/example/decklist
 ```
 
-Los valores son únicamente URLs y no tienen nombre de mazo. El orden de los formatos se conserva. Si una URL aparece varias veces dentro de un formato, la cache evita descargarla más de una vez.
+Los formatos son configurables y sus valores son listas de URLs. El formato `glc` fuerza la cantidad `1`; en los demás formatos se conserva la cantidad máxima entre mazos. Las cartas Pokémon incluyen su impresión, por ejemplo `4 Pikachu (SVI-062)`.
 
-**Salida en consola:**
+Ejecuta desde `pokemon.app/`:
 
-Las salidas contienen las cartas completas de cada formato, no diferencias contra una colección existente.
-
-**Caché local:** `cards_db.json` guarda `{nombre|set|numero: {supertype, subtype}}` para evitar llamadas repetidas a `limitlesstcg.com`. Se genera y conserva localmente; no se versiona ni debe borrarse manualmente.
-
-**Configuración:** copia `decks/decks.yaml.example` como `decks/decks.yaml` y edítalo con las URLs de los mazos a procesar.
-
-Si una URL ya está en `decks_cache.json`, no se vuelve a consultar. Para forzar la actualización de todos los mazos usa `python scraper.py --refresh`. Esta opción vuelve a descargar las decklists y actualiza `decks_cache.json`; no borra las colecciones ni fuerza la actualización de las cartas que ya están en `cards_db.json`.
-
-**Uso:**
 ```bash
-cd pokemon.app
-# Editar decks/decks.yaml con las URLs de Limitless TCG
 python scraper.py
+python scraper.py --refresh
 ```
 
-## Tech Stack
+`--refresh` vuelve a descargar los mazos y actualiza `decks_cache.json`. La base de datos `cards_db.json` almacena los subtipos consultados usando la clave `nombre|set|número`.
 
-- [Python](https://www.python.org/) - Lenguaje de scripting.
-- [Beautiful Soup](https://www.crummy.com/software/BeautifulSoup/) - Parseo de HTML.
-- [Requests](https://requests.readthedocs.io/) - Peticiones HTTP.
-- [Scryfall API](https://scryfall.com/docs/api) - Datos y legalidades de cartas de Magic.
-- [Limitless TCG](https://limitlesstcg.com) - Decks y datos de cartas de Pokémon.
+La salida se regenera en `pokemon.app/export/`:
+
+```text
+collection_<format>_pokemon.txt
+collection_<format>_items.txt
+collection_<format>_supporters.txt
+collection_<format>_tools.txt
+collection_<format>_stadiums.txt
+collection_<format>_energies.txt
+unknown_<format>.txt
+```
+
+`unknown_<format>.txt` contiene Trainers cuyo subtipo no pudo determinarse.
+
+## Pruebas
+
+Ejecuta la suite desde la raíz del repositorio con la librería estándar:
+
+```bash
+python -m unittest discover -s tests
+```
+
+También puedes validar la sintaxis de ambos scrapers:
+
+```bash
+python -m py_compile magic.app/scraper.py pokemon.app/scraper.py
+```
+
+## Fuentes y dependencias
+
+- [Python](https://www.python.org/)
+- [Requests](https://requests.readthedocs.io/)
+- [Beautiful Soup](https://www.crummy.com/software/BeautifulSoup/)
+- [PyYAML](https://pyyaml.org/)
+- [Scryfall API](https://scryfall.com/docs/api)
+- [MTGDecks](https://mtgdecks.net/)
+- [Limitless TCG](https://limitlesstcg.com/)

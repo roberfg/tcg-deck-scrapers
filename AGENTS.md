@@ -1,145 +1,126 @@
 # Contexto del Proyecto
 
-## Propósito
-
-Este repositorio contiene dos scrapers independientes para mantener colecciones de cartas:
+Este repositorio contiene dos scrapers independientes para generar colecciones de cartas desde listas de mazos:
 
 - `magic.app/`: Magic: The Gathering.
 - `pokemon.app/`: Pokémon TCG.
 
-Las explicaciones y la documentación del proyecto están en español. Los identificadores y el código permanecen en inglés.
+La documentación y los comentarios nuevos deben estar en español. Los identificadores, rutas, claves de datos, mensajes de consola y código deben permanecer en inglés cuando formen parte del comportamiento del programa.
 
 ## Estructura
 
 ```text
 scraper-tcg-python/
-├── magic.app/
-│   ├── scraper.py
-│   ├── decks/
-│   │   ├── decks.yaml
-│   │   └── decks.yaml.example
-│   ├── cards_db.json
-│   ├── decks_cache.json
-│   └── exports/
-├── pokemon.app/
-│   ├── scraper.py
-│   ├── decks/decks.yaml
-│   ├── cards_db.json
-│   ├── decks_cache.json
-│   └── export/
-├── tests/
-│   ├── test_magic_scraper.py
-│   └── test_pokemon_scraper.py
+├── magic.app/scraper.py
+├── magic.app/decks/decks.yaml.example
+├── magic.app/cards_db.json.example
+├── magic.app/exports/
+├── pokemon.app/scraper.py
+├── pokemon.app/decks/decks.yaml.example
+├── pokemon.app/cards_db.json.example
+├── pokemon.app/decks_cache.json.example
+├── pokemon.app/export/
+├── tests/test_magic_scraper.py
+├── tests/test_pokemon_scraper.py
 ├── requirements.txt
-└── README.md
+├── README.md
+└── AGENTS.md
 ```
 
-Los archivos de configuración, caché, bases de datos y salidas son locales y están ignorados por Git. Las plantillas `.example` sí están versionadas.
+Los archivos locales `decks.yaml`, `cards_db.json`, `decks_cache.json` y las salidas generadas están ignorados por Git. No mezclar configuración, cachés ni salidas entre las dos apps.
 
 ## Magic
 
-### Fuente
+### Flujo
 
-Los mazos se descargan desde páginas individuales de `mtgdecks.net`. La lista se encuentra en el elemento HTML `#arena_deck` y contiene maindeck y sideboard.
+1. Ejecutar desde `magic.app/`.
+2. Leer `decks/decks.yaml`, cuyo objeto `decks` contiene formatos con listas de URLs.
+3. Descargar cada URL de `mtgdecks.net` o usar `decks_cache.json`.
+4. Extraer la lista del selector HTML `#arena_deck`, incluyendo el sideboard.
+5. Ignorar tierras básicas.
+6. Consultar Scryfall y guardar los resultados en `cards_db.json`.
+7. Clasificar cada carta por legalidad Pauper y categoría.
+8. Limpiar y regenerar `exports/`.
 
-El scraper usa `curl/8.0` como `User-Agent` porque `mtgdecks.net` puede devolver contenido distinto o un `403` según el identificador del cliente. No cambiarlo sin volver a validar el deck recibido.
+El scraper usa `curl/8.0` como `User-Agent` para `mtgdecks.net`. No cambiarlo sin validar una URL real, porque el sitio puede responder con contenido distinto o `403` según el cliente.
 
-### Configuración actual
+Las categorías son `creatures`, `lands`, `planeswalkers`, `spells`, `artifacts` y `enchantments`. La prioridad de clasificación es Creature, Land, Planeswalker, Instant/Sorcery, Artifact, Enchantment.
 
-Archivo: `magic.app/decks/decks.yaml`.
+### Salida y cantidades
 
-```yaml
-decks:
-  pauper: []
-  standard:
-    - https://mtgdecks.net/Standard/izzet-spellementals-decklist-by-brunninho-3152160
-  modern: []
-  premodern: []
-  pioneer: []
-```
-
-Cada formato contiene una lista de URLs. Para agregar mazos, se añade una URL al formato correspondiente. El formato correcto es `premodern`, no `premoder`.
-
-### Flujo de Magic
-
-1. Carga las URLs de `decks/decks.yaml`.
-2. Descarga cada deck o lo obtiene desde `decks_cache.json`.
-3. Extrae las líneas de `#arena_deck`.
-4. Incluye el sideboard.
-5. Ignora tierras básicas.
-6. Consulta Scryfall para determinar legalidad Pauper y tipo de carta.
-7. Agrupa las cartas por legalidad y tipo.
-8. Regenera completamente `magic.app/exports/`.
-
-Las categorías de tipo son:
-
-- `creatures`
-- `lands`
-- `planeswalkers`
-- `spells`
-- `artifacts`
-- `enchantments`
-
-La prioridad cuando una carta tiene varios tipos es: Creature, Land, Planeswalker, Instant/Sorcery, Artifact, Enchantment.
-
-### Salidas de Magic
-
-La salida permitida está limitada a estos patrones:
+Se generan ambos archivos para cada categoría, incluso si quedan vacíos:
 
 ```text
-collection_pauper_<tipo>.txt
-collection_non_pauper_<tipo>.txt
+collection_pauper_<category>.txt
+collection_non_pauper_<category>.txt
 ```
 
-Se generan ambos archivos para cada categoría, incluso si uno queda vacío. No se deben generar:
+Las cantidades repetidas entre mazos se combinan tomando el máximo. Las cartas desconocidas solo se informan en consola; no crear archivos auxiliares como `unknown.txt` o `review_pauper_nonlegal.txt`.
 
-- `collection_<tipo>.txt`.
-- `deck_<formato>_<mazo>.txt`.
-- `unknown.txt`.
-- `review_pauper_nonlegal.txt`.
-
-Las cartas repetidas entre mazos conservan la cantidad máxima. Las cartas desconocidas se informan en consola, pero no se escriben en un archivo adicional.
-
-### Caché y ejecución
-
-Desde `magic.app/`:
+Comandos:
 
 ```bash
+cd magic.app
 python scraper.py
 python scraper.py --refresh
 ```
 
-`--refresh` ignora la caché de mazos y vuelve a descargar las URLs. La caché de cartas de Scryfall se conserva en `cards_db.json`.
+`--refresh` ignora la caché de mazos, pero conserva la caché de cartas de Scryfall.
 
 ## Pokémon
 
-`pokemon.app/scraper.py` mantiene un flujo separado. Usa URLs de `play.limitlesstcg.com`, clasifica Pokémon y Trainers y genera colecciones por formato y subtipo. No mezclar la configuración ni la caché de Pokémon con las de Magic.
+### Flujo
 
-Desde `pokemon.app/`:
+1. Ejecutar desde `pokemon.app/`.
+2. Leer `decks/decks.yaml`, cuyo objeto `decks` contiene formatos con listas de URLs.
+3. Descargar decklists desde `play.limitlesstcg.com` o usar `decks_cache.json`.
+4. Separar las secciones Pokémon, Trainer y Energy.
+5. Ignorar energías básicas.
+6. Consultar `limitlesstcg.com` para clasificar los Trainers como Supporter, Item, Tool o Stadium.
+7. Guardar la información consultada en `cards_db.json`.
+8. Limpiar y regenerar `export/`.
+
+El formato `glc` fuerza la cantidad `1`. Los demás formatos conservan la cantidad máxima por carta e impresión. Las cartas Pokémon se escriben con su impresión, por ejemplo `4 Pikachu (SVI-062)`.
+
+Se generan estos patrones por formato:
+
+```text
+collection_<format>_pokemon.txt
+collection_<format>_items.txt
+collection_<format>_supporters.txt
+collection_<format>_tools.txt
+collection_<format>_stadiums.txt
+collection_<format>_energies.txt
+unknown_<format>.txt
+```
+
+`unknown_<format>.txt` contiene Trainers cuyo subtipo no se pudo determinar. No eliminar ni renombrar este archivo sin actualizar el README y las pruebas.
+
+Comandos:
 
 ```bash
+cd pokemon.app
 python scraper.py
 python scraper.py --refresh
 ```
 
-## Pruebas
+## Pruebas y validación
 
-No asumir que `pytest` está instalado. La suite se puede ejecutar con la librería estándar:
+No asumir que `pytest` está instalado. Ejecutar desde la raíz:
 
 ```bash
 python -m unittest discover -s tests
+python -m py_compile magic.app/scraper.py pokemon.app/scraper.py
 ```
 
-También se puede validar la sintaxis de Magic con:
-
-```bash
-python -m py_compile magic.app/scraper.py
-```
+Después de cambiar el formato YAML, los selectores HTML, la clasificación o las reglas de cantidades, ejecutar ambas comprobaciones.
 
 ## Reglas de mantenimiento
 
-- No crear archivos de salida adicionales para Magic sin actualizar este contexto y el README.
-- No cambiar el selector `#arena_deck` sin probar una URL real.
-- Si una URL devuelve un mazo inesperado, ejecutar `python scraper.py --refresh` y revisar el `User-Agent` antes de aceptar la caché.
-- Mantener la caché local fuera de Git.
-- Ejecutar la suite de tests después de cambiar el formato YAML o la clasificación de cartas.
+- Mantener los flujos de Magic y Pokémon separados.
+- Usar las plantillas `.example` como referencia para configurar URLs locales.
+- No versionar configuraciones personales, cachés, bases de datos ni salidas generadas.
+- No cambiar `#arena_deck` ni los `User-Agent` sin probar una URL real.
+- Mantener el formato `premodern` en Magic; no usar `premoder`.
+- No crear nuevas salidas para Magic sin actualizar este archivo, `README.md` y las pruebas correspondientes.
+- Si una caché produce resultados inesperados, ejecutar el scraper con `--refresh` antes de diagnosticar el parser.
